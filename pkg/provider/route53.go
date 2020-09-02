@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"errors"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/route53"
@@ -14,14 +15,21 @@ const (
 type Route53Confg struct {
 	Sess *session.Session
 
+	Client Route53Client
+
 	HostedZoneId          string
 	RecordName            string
 	SourceIdentifier      string
 	DestinationIdentifier string
 }
 
+type Route53Client interface {
+	ListResourceRecordSets(input *route53.ListResourceRecordSetsInput) (*route53.ListResourceRecordSetsOutput, error)
+	ChangeResourceRecordSets(input *route53.ChangeResourceRecordSetsInput) (*route53.ChangeResourceRecordSetsOutput, error)
+}
+
 type Route53Provider struct {
-	client *route53.Route53
+	client Route53Client
 	config *Route53Confg
 }
 
@@ -96,11 +104,11 @@ func (p *Route53Provider) Update(percentage float64) error {
 		ChangeBatch: &route53.ChangeBatch{
 			Changes: []*route53.Change{
 				{
-					Action: aws.String("UPSERT"),
+					Action:            aws.String("UPSERT"),
 					ResourceRecordSet: sourceResourceRecordSet,
 				},
 				{
-					Action: aws.String("UPSERT"),
+					Action:            aws.String("UPSERT"),
 					ResourceRecordSet: destinationResourceRecordSet,
 				},
 			},
@@ -116,7 +124,14 @@ func (p *Route53Provider) Update(percentage float64) error {
 }
 
 func NewRoute53Provider(config *Route53Confg) (*Route53Provider, error) {
-	client := route53.New(config.Sess)
+	client := config.Client
+
+	if client == nil {
+		if config.Sess == nil {
+			return nil, errors.New("Route53Config.Sess must be set when Route53Config.Client is missing")
+		}
+		client = route53.New(config.Sess)
+	}
 
 	return &Route53Provider{
 		client: client,
