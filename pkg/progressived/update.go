@@ -13,7 +13,7 @@ func (p *Progressived) Update() (float64, error) {
 
 	value, err := p.Metrics.GetMetric(query)
 	if err != nil {
-		if _, ok := err.(*metrics.NoDataError); !ok || !p.AllowNoData  {
+		if _, ok := err.(*metrics.NoDataError); !ok || !p.AllowNoData {
 			return -1, fmt.Errorf("update: %w", err)
 		}
 	}
@@ -27,23 +27,18 @@ func (p *Progressived) Update() (float64, error) {
 		}
 	}
 
-	percentage, err := p.Provider.Get()
+	percentage, err := p.CurrentPercentage()
 	if err != nil {
 		return -1, fmt.Errorf("update: %w", err)
 	}
-	updatePercentage := p.Algorithm.Next(percentage)
-	if percentage <= 0 && updatePercentage <= 0 {
-		return -1, fmt.Errorf("update: progress of progressive delivery is already complete")
+	updatePercentage, err := p.NextPercentage()
+	if err != nil {
+		return -1, fmt.Errorf("update: %w", err)
 	}
-	if percentage >= 100 && updatePercentage >= 100 {
-		return -1, fmt.Errorf("update: progress of progressive delivery is already complete")
+	if percentage == updatePercentage {
+		return -1, AlreadyCompletedError{}
 	}
-	if updatePercentage <= 0 {
-		updatePercentage = 0
-	}
-	if updatePercentage >= 100 {
-		updatePercentage = 100
-	}
+
 	if err := p.Provider.Update(updatePercentage); err != nil {
 		return -1, fmt.Errorf("update: %w", err)
 	}

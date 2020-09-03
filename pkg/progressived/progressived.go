@@ -26,3 +26,10 @@ type NotMatchMetricsError struct {
 func (e NotMatchMetricsError) Error() string {
 	return fmt.Sprintf("metrics value `%f` did not match the specified conditions `%s`", e.metricsValue, e.condition)
 }
+
+type AlreadyCompletedError struct {
+}
+
+func (e AlreadyCompletedError) Error() string {
+	return "progress of progressive delivery is already complete"
+}

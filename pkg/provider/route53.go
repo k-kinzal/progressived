@@ -2,6 +2,7 @@ package provider
 
 import (
 	"errors"
+	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/route53"
@@ -31,6 +32,10 @@ type Route53Client interface {
 type Route53Provider struct {
 	client Route53Client
 	config *Route53Confg
+}
+
+func (p *Route53Provider) TargetName() string {
+	return fmt.Sprintf("AWS/Route53/%s", p.config.RecordName)
 }
 
 func (p *Route53Provider) getResourceRecordSets() (sourceResourceRecordSet *route53.ResourceRecordSet, destinationResourceRecordSet *route53.ResourceRecordSet, err error) {
