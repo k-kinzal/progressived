@@ -42,8 +42,8 @@ func (p *Route53Provider) getResourceRecordSets() (sourceResourceRecordSet *rout
 	var startRecordIdentifier *string
 	var startRecordName = aws.String(p.config.RecordName)
 	var startRecordType *string
-	var isTruncated = false
-	for !isTruncated {
+	var isTruncated = true
+	for isTruncated {
 		res, err := p.client.ListResourceRecordSets(&route53.ListResourceRecordSetsInput{
 			HostedZoneId:          aws.String(p.config.HostedZoneId),
 			StartRecordIdentifier: startRecordIdentifier,
