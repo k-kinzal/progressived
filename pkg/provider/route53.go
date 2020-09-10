@@ -78,11 +78,15 @@ func (p *Route53Provider) getResourceRecordSets() (src *route53.ResourceRecordSe
 			if src != nil && dest != nil {
 				break
 			}
-			if p.config.Type != "" && !p.matchPattern(p.config.Type, p.config.TypeRegexp, aws.StringValue(r.Type)) {
-				continue
+			if p.config.Type != "" || p.config.TypeRegexp != nil {
+				if !p.matchPattern(p.config.Type, p.config.TypeRegexp, aws.StringValue(r.Type)) {
+					continue
+				}
 			}
-			if p.config.RecordName != "" && !p.matchPattern(p.config.RecordName, p.config.RecordNameRegexp, aws.StringValue(r.Name)) {
-				continue
+			if p.config.RecordName != "" || p.config.RecordNameRegexp != nil {
+				if !p.matchPattern(p.config.RecordName, p.config.RecordNameRegexp, aws.StringValue(r.Name)) {
+					continue
+				}
 			}
 			if p.matchPattern(p.config.SourceIdentifier, p.config.SourceIdentifierRegexp, aws.StringValue(r.SetIdentifier)) {
 				src = r
@@ -161,6 +165,9 @@ func NewRoute53Provider(config *Route53Confg) (*Route53Provider, error) {
 	if config.DestinationIdentifier == "" && config.DestinationIdentifierRegexp == nil {
 		return nil, errors.New("Route53Config.DestinationIdentifier or Route53Config.DestinationIdentifierRegexp must be set")
 	}
+	config.DestinationIdentifier = ""
+	config.DestinationIdentifierRegexp = regexp.MustCompile(`^.*$`)
+
 
 	client := config.Client
 
