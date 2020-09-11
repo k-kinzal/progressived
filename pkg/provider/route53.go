@@ -7,6 +7,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/route53"
 	"math"
+	"regexp"
+	"strings"
 )
 
 const (
@@ -18,10 +20,15 @@ type Route53Confg struct {
 
 	Client Route53Client
 
-	HostedZoneId          string
-	RecordName            string
-	SourceIdentifier      string
-	DestinationIdentifier string
+	HostedZoneId                string
+	RecordName                  string
+	RecordNameRegexp            *regexp.Regexp
+	Type                        string
+	TypeRegexp                  *regexp.Regexp
+	SourceIdentifier            string
+	SourceIdentifierRegexp      *regexp.Regexp
+	DestinationIdentifier       string
+	DestinationIdentifierRegexp *regexp.Regexp
 }
 
 type Route53Client interface {
@@ -38,48 +45,68 @@ func (p *Route53Provider) TargetName() string {
 	return fmt.Sprintf("AWS/Route53/%s", p.config.RecordName)
 }
 
-func (p *Route53Provider) getResourceRecordSets() (sourceResourceRecordSet *route53.ResourceRecordSet, destinationResourceRecordSet *route53.ResourceRecordSet, err error) {
-	var startRecordIdentifier *string
-	var startRecordName = aws.String(p.config.RecordName)
-	var startRecordType *string
-	var isTruncated = true
-	for isTruncated {
-		res, err := p.client.ListResourceRecordSets(&route53.ListResourceRecordSetsInput{
-			HostedZoneId:          aws.String(p.config.HostedZoneId),
-			StartRecordIdentifier: startRecordIdentifier,
-			StartRecordName:       startRecordName,
-			StartRecordType:       startRecordType,
-		})
+func (p *Route53Provider) matchPattern(substr string, r *regexp.Regexp, s string) bool {
+	if substr != "" && r != nil {
+		return strings.Index(s, substr) != -1 && r.MatchString(s)
+	}
+	if substr != "" {
+		return strings.Index(s, substr) != -1
+	}
+	if r != nil {
+		return r.MatchString(s)
+	}
+
+	return false
+}
+
+func (p *Route53Provider) getResourceRecordSets() (src *route53.ResourceRecordSet, dest *route53.ResourceRecordSet, err error) {
+	input := &route53.ListResourceRecordSetsInput{
+		HostedZoneId: aws.String(p.config.HostedZoneId),
+	}
+	if strings.HasSuffix(p.config.RecordName, ".") {
+		input.StartRecordName = aws.String(p.config.RecordName)
+	}
+	if p.config.Type != "" {
+		input.StartRecordType = aws.String(p.config.Type)
+	}
+	for isTruncated := true; isTruncated == true && (src == nil || dest == nil); {
+		res, err := p.client.ListResourceRecordSets(input)
 		if err != nil {
 			return nil, nil, err
 		}
 		for _, r := range res.ResourceRecordSets {
-			if aws.StringValue(r.Name) != p.config.RecordName {
+			if src != nil && dest != nil {
+				break
+			}
+			if p.config.Type != "" || p.config.TypeRegexp != nil {
+				if !p.matchPattern(p.config.Type, p.config.TypeRegexp, aws.StringValue(r.Type)) {
+					continue
+				}
+			}
+			if p.config.RecordName != "" || p.config.RecordNameRegexp != nil {
+				if !p.matchPattern(p.config.RecordName, p.config.RecordNameRegexp, aws.StringValue(r.Name)) {
+					continue
+				}
+			}
+			if p.matchPattern(p.config.SourceIdentifier, p.config.SourceIdentifierRegexp, aws.StringValue(r.SetIdentifier)) {
+				src = r
 				continue
 			}
-			if aws.StringValue(r.SetIdentifier) == p.config.SourceIdentifier {
-				sourceResourceRecordSet = r
-				continue
-			}
-			if aws.StringValue(r.SetIdentifier) == p.config.DestinationIdentifier {
-				destinationResourceRecordSet = r
+			if p.matchPattern(p.config.DestinationIdentifier, p.config.DestinationIdentifierRegexp, aws.StringValue(r.SetIdentifier)) {
+				dest = r
 				continue
 			}
 		}
-		startRecordIdentifier = res.NextRecordIdentifier
-		startRecordName = res.NextRecordName
-		startRecordType = res.NextRecordType
+		input.StartRecordIdentifier = res.NextRecordIdentifier
+		input.StartRecordName = res.NextRecordName
+		input.StartRecordType = res.NextRecordType
 
 		isTruncated = res.IsTruncated != nil && *res.IsTruncated == true
 	}
-	if sourceResourceRecordSet == nil {
+	if src == nil || dest == nil {
 		return nil, nil, err
 	}
-	if destinationResourceRecordSet == nil {
-		return nil, nil, err
-	}
-
-	return sourceResourceRecordSet, destinationResourceRecordSet, nil
+	return src, dest, nil
 }
 
 func (p *Route53Provider) Get() (percentage float64, err error) {
@@ -129,6 +156,19 @@ func (p *Route53Provider) Update(percentage float64) error {
 }
 
 func NewRoute53Provider(config *Route53Confg) (*Route53Provider, error) {
+	if config.HostedZoneId == "" {
+		return nil, errors.New("Route53Config.HostedZoneId is missing")
+	}
+	if config.SourceIdentifier == "" && config.SourceIdentifierRegexp == nil {
+		return nil, errors.New("Route53Config.SourceIdentifier or Route53Config.SourceIdentifierRegexp must be set")
+	}
+	if config.DestinationIdentifier == "" && config.DestinationIdentifierRegexp == nil {
+		return nil, errors.New("Route53Config.DestinationIdentifier or Route53Config.DestinationIdentifierRegexp must be set")
+	}
+	config.DestinationIdentifier = ""
+	config.DestinationIdentifierRegexp = regexp.MustCompile(`^.*$`)
+
+
 	client := config.Client
 
 	if client == nil {
