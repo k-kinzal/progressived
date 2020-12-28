@@ -4,6 +4,6 @@ var (
 	version string
 )
 
-func GetVersion() string {
+func getVersion() string {
 	return version
 }

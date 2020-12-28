@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	Route53ProviderType = "route53"
+	Route53ProviderType ProviderType = "route53"
 )
 
 type Route53Confg struct {
@@ -167,7 +167,6 @@ func NewRoute53Provider(config *Route53Confg) (*Route53Provider, error) {
 	}
 	config.DestinationIdentifier = ""
 	config.DestinationIdentifierRegexp = regexp.MustCompile(`^.*$`)
-
 
 	client := config.Client
 
