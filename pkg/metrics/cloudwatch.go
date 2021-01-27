@@ -54,7 +54,7 @@ func (m *CloudWatchMetrics) GetMetric(query string) (float64, error) {
 	return aws.Float64Value(values[0]), nil
 }
 
-func NewCloudWatchMetrics(config *CloudWatchConfig) *CloudWatchMetrics {
+func NewCloudWatchMetrics(config *CloudWatchConfig) Metrics {
 	client := cloudwatch.New(config.Sess)
 
 	return &CloudWatchMetrics{

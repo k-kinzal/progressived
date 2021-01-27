@@ -168,7 +168,6 @@ func NewRoute53Provider(config *Route53Confg) (*Route53Provider, error) {
 	config.DestinationIdentifier = ""
 	config.DestinationIdentifierRegexp = regexp.MustCompile(`^.*$`)
 
-
 	client := config.Client
 
 	if client == nil {
