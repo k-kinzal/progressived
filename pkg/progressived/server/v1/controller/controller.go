@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/k-kinzal/progressived/pkg/logger"
-	"github.com/k-kinzal/progressived/pkg/progressived/persistence"
+	"github.com/k-kinzal/progressived/pkg/progressived/persistence/v1/deployment"
 	"github.com/k-kinzal/progressived/pkg/progressived/server/v1/request"
 	"github.com/k-kinzal/progressived/pkg/progressived/server/v1/response"
 	"net/http"
@@ -12,24 +12,56 @@ import (
 )
 
 var (
-	prefix                     = "/api/v1"
-	regexpPathDeployment       = regexp.MustCompile(fmt.Sprintf(`^%s/deployment/?$`, prefix))
-	regexpPathDeploymentWithId = regexp.MustCompile(fmt.Sprintf(`^%s/deployment/([0-9]+/?$)`, prefix))
+	prefix                             = "/api/v1"
+	regexpPathDeployment               = regexp.MustCompile(fmt.Sprintf(`^%s/deployment/?$`, prefix))
+	regexpPathDeploymentWithId         = regexp.MustCompile(fmt.Sprintf(`^%s/deployment/([a-z][a-z0-9_]*/?$)`, prefix))
+	regexpPathDeploymentScheduleWithId = regexp.MustCompile(fmt.Sprintf(`^%s/deployment/([a-z][a-z0-9_]*/schedule$)`, prefix))
+	regexpPathDeploymentPauseWithId    = regexp.MustCompile(fmt.Sprintf(`^%s/deployment/([a-z][a-z0-9_]*/pause$)`, prefix))
 )
 
 type Controller struct {
-	fact   persistence.DeploymentFactory
-	per    persistence.Deployments
-	logger logger.Logger
+	deployments deployment.Deployments
+	logger      logger.Logger
 }
 
 func (c *Controller) Handler(w http.ResponseWriter, r *http.Request) {
 	var resp interface{}
 
-	if id := regexpPathDeploymentWithId.FindString(r.URL.Path); id != "" {
+	if name := regexpPathDeploymentScheduleWithId.FindString(r.URL.Path); name != "" {
+		switch r.Method {
+		case http.MethodPost:
+			var req *request.ScheduleDeploymentRequest
+			dec := json.NewDecoder(r.Body)
+			if err := dec.Decode(&req); err != nil {
+				c.ErrorHandler(w, r, err)
+				return
+			}
+
+			res, err := c.ScheduleDeployment(name, req)
+			if err != nil {
+				c.ErrorHandler(w, r, err)
+				return
+			}
+			resp = res
+		default:
+			c.ErrorHandler(w, r, &response.MethodNotAllowedError{Method: r.Method, Path: r.URL.Path})
+		}
+	} else if name := regexpPathDeploymentPauseWithId.FindString(r.URL.Path); name != "" {
+		switch r.Method {
+		case http.MethodPost:
+			res, err := c.PauseDeployment(name, &request.PauseDeploymentRequest{})
+			if err != nil {
+				c.ErrorHandler(w, r, err)
+				return
+			}
+			resp = res
+		default:
+			c.ErrorHandler(w, r, &response.MethodNotAllowedError{Method: r.Method, Path: r.URL.Path})
+		}
+	} else if name := regexpPathDeploymentWithId.FindString(r.URL.Path); name != "" {
 		switch r.Method {
 		case http.MethodGet:
-			res, err := c.DescribeDeployment(id, &request.DescribeDeploymentRequest{})
+			res, err := c.DescribeDeployment(name, &request.DescribeDeploymentRequest{})
 			if err != nil {
 				c.ErrorHandler(w, r, err)
 				return
@@ -43,7 +75,7 @@ func (c *Controller) Handler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			res, err := c.PutDeployment(id, req)
+			res, err := c.PutDeployment(name, req)
 			if err != nil {
 				c.ErrorHandler(w, r, err)
 				return
@@ -106,10 +138,9 @@ func (c *Controller) ErrorHandler(w http.ResponseWriter, r *http.Request, err er
 	}
 }
 
-func NewController(fact persistence.DeploymentFactory, per persistence.Deployments, logger logger.Logger) *Controller {
+func NewController(deployments deployment.Deployments, logger logger.Logger) *Controller {
 	return &Controller{
-		fact:   fact,
-		per:    per,
-		logger: logger,
+		deployments: deployments,
+		logger:      logger,
 	}
 }

@@ -2,9 +2,10 @@ package controller
 
 import (
 	"fmt"
-	"github.com/k-kinzal/progressived/pkg/progressived/persistence"
+	"github.com/k-kinzal/progressived/pkg/progressived/persistence/v1/deployment"
 	"github.com/k-kinzal/progressived/pkg/progressived/server/v1/request"
 	"github.com/k-kinzal/progressived/pkg/progressived/server/v1/response"
+	"time"
 )
 
 // PUT /api/v1/deployment/:name
@@ -26,11 +27,11 @@ func (c *Controller) PutDeployment(name string, req *request.PutDeploymentReques
 		return nil, &response.BadRequestError{Messsage: err.Error()}
 	}
 
-	entity, err := c.per.Get(name)
+	entity, err := c.deployments.Get(name)
 	if err != nil {
 		switch err.(type) {
-		case *persistence.DeploymentNotFountdError:
-			e, err := c.fact.New(name, req.Interval, provider, stepBehavior, rollbackBehavior, metrics)
+		case *deployment.NotFoundError:
+			e, err := deployment.New(name, req.Interval, provider, stepBehavior, rollbackBehavior, metrics)
 			if err != nil {
 				return nil, &response.BadRequestError{Messsage: err.Error()}
 			}
@@ -45,28 +46,34 @@ func (c *Controller) PutDeployment(name string, req *request.PutDeploymentReques
 		}
 		entity = e
 	}
+	if req.AutoStart {
+		entity, err = entity.Scheduling(nil)
+		if err != nil {
+			return nil, &response.BadRequestError{Messsage: err.Error()}
+		}
+	}
 
-	if err := c.per.Put(entity); err != nil {
+	if err := c.deployments.Put(entity); err != nil {
 		return nil, &response.InternalServerError{Err: err}
 	}
 
-	return response.NewPutDeploymentResponseWith(entity), nil
+	return response.NewPutDeploymentResponse(entity), nil
 }
-func (c *Controller) newProviderWithPutDeploymentRequest(req *request.PutDeploymentRequest) (persistence.Provider, error) {
-	var provider persistence.Provider
-	switch persistence.ProviderType(req.Provider.ProviderType) {
-	case persistence.Route53ProviderType:
+func (c *Controller) newProviderWithPutDeploymentRequest(req *request.PutDeploymentRequest) (*deployment.ProviderSpec, error) {
+	var provider *deployment.ProviderSpec
+	switch deployment.ProviderType(req.Provider.ProviderType) {
+	case deployment.Route53ProviderType:
 		var hostedZoneId = req.Provider.HostedZoneID
 		var recordName = req.Provider.RecordName
 		var recordType = req.Provider.RecordType
 		var setIdentifier = req.Provider.SetIdentifier
-		p, err := c.fact.NewRoute53ProviderSpec(hostedZoneId, recordName, recordType, setIdentifier)
+		p, err := deployment.NewRoute53ProviderSpec(hostedZoneId, recordName, recordType, setIdentifier)
 		if err != nil {
 			return nil, err
 		}
 		provider = p
-	case persistence.InMemoryProviderType:
-		p, err := c.fact.NewInMemoryProviderSpec()
+	case deployment.InMemoryProviderType:
+		p, err := deployment.NewInMemoryProviderSpec()
 		if err != nil {
 			return nil, err
 		}
@@ -77,11 +84,11 @@ func (c *Controller) newProviderWithPutDeploymentRequest(req *request.PutDeploym
 	return provider, nil
 }
 
-func (c *Controller) newStepBehaviorWithPutDeploymentRequest(req *request.PutDeploymentRequest) (persistence.StepBehavior, error) {
-	var stepBehavior persistence.StepBehavior
-	switch persistence.BehaviorAlgorithm(req.Step.Algorithm) {
-	case persistence.IncreaseBehaviorType:
-		s, err := c.fact.NewIncreaseStepBehaviorSpec(req.Step.Threshold)
+func (c *Controller) newStepBehaviorWithPutDeploymentRequest(req *request.PutDeploymentRequest) (*deployment.StepBehaviorSpec, error) {
+	var stepBehavior *deployment.StepBehaviorSpec
+	switch deployment.StepBehaviorAlgorithm(req.Step.Algorithm) {
+	case deployment.IncreaseBehaviorType:
+		s, err := deployment.NewIncreaseStepBehaviorSpec(req.Step.Threshold)
 		if err != nil {
 			return nil, err
 		}
@@ -93,17 +100,17 @@ func (c *Controller) newStepBehaviorWithPutDeploymentRequest(req *request.PutDep
 	return stepBehavior, nil
 }
 
-func (c *Controller) newRollbackBehaviorWithPutDeploymentRequest(req *request.PutDeploymentRequest) (persistence.RollbackBehavior, error) {
-	var rollbackBehavior persistence.RollbackBehavior
-	switch persistence.RollbackBehaviorAlgorithm(req.Rollback.Algorithm) {
-	case persistence.RollbackDecreaseBehaviorType:
-		r, err := c.fact.NewDecreaseRollbackBehaviorSpec(req.Step.Threshold)
+func (c *Controller) newRollbackBehaviorWithPutDeploymentRequest(req *request.PutDeploymentRequest) (*deployment.RollbackBehaviorSpec, error) {
+	var rollbackBehavior *deployment.RollbackBehaviorSpec
+	switch deployment.RollbackBehaviorAlgorithm(req.Rollback.Algorithm) {
+	case deployment.RollbackDecreaseBehaviorType:
+		r, err := deployment.NewDecreaseRollbackBehaviorSpec(req.Step.Threshold)
 		if err != nil {
 			return nil, err
 		}
 		rollbackBehavior = r
-	case persistence.RollbackHistoryBehaviorType:
-		r, err := c.fact.NewHistoryRollbackBehaviorSpec()
+	case deployment.RollbackHistoryBehaviorType:
+		r, err := deployment.NewHistoryRollbackBehaviorSpec()
 		if err != nil {
 			return nil, err
 		}
@@ -115,18 +122,30 @@ func (c *Controller) newRollbackBehaviorWithPutDeploymentRequest(req *request.Pu
 	return rollbackBehavior, nil
 }
 
-func (c *Controller) newMetricsWithPutDeploymentRequest(req *request.PutDeploymentRequest) ([]persistence.Metrics, error) {
-	metrics := make([]persistence.Metrics, len(req.Metrics))
+func (c *Controller) newMetricsWithPutDeploymentRequest(req *request.PutDeploymentRequest) ([]*deployment.MetricsSpec, error) {
+	metrics := make([]*deployment.MetricsSpec, len(req.Metrics))
 	for i, v := range req.Metrics {
-		switch persistence.MetricsType(v.MetricType) {
-		case persistence.InMemoryMetricsType:
-			m, err := c.fact.NewInMemoryMetrics(v.Period, v.Condition, v.Target.Percentage, v.Target.TimeWindow)
+		switch deployment.MetricsType(v.MetricType) {
+		case deployment.InMemoryMetricsType:
+			var percentage *float64
+			var timeWindow *time.Duration
+			if v.Target != nil {
+				percentage = &v.Target.Percentage
+				timeWindow = &v.Target.TimeWindow
+			}
+			m, err := deployment.NewInMemoryMetrics(v.Period, v.Condition, percentage, timeWindow)
 			if err != nil {
 				return nil, err
 			}
 			metrics[i] = m
-		case persistence.InCloudWatchMetricsType:
-			m, err := c.fact.NewCloudWatchMetrics(v.Period, v.Condition, v.Query, *v.AllowNoData, v.Target.Percentage, v.Target.TimeWindow)
+		case deployment.CloudWatchMetricsType:
+			var percentage *float64
+			var timeWindow *time.Duration
+			if v.Target != nil {
+				percentage = &v.Target.Percentage
+				timeWindow = &v.Target.TimeWindow
+			}
+			m, err := deployment.NewCloudWatchMetrics(v.Period, v.Condition, v.Query, *v.AllowNoData, percentage, timeWindow)
 			if err != nil {
 				return nil, err
 			}

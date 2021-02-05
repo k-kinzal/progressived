@@ -7,10 +7,10 @@ import (
 
 // GET /api/v1/deployment
 func (c *Controller) ListDeployment(_ *request.ListDeploymentRequest) (*response.ListDeploymentResponse, error) {
-	entities, err := c.per.Seq()
+	entities, err := c.deployments.Seq()
 	if err != nil {
 		return nil, err
 	}
 
-	return response.NewListDeploymentResponseWith(entities), nil
+	return response.NewListDeploymentResponse(entities), nil
 }

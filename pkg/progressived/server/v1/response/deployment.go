@@ -1,12 +1,11 @@
 package response
 
 import (
-	"github.com/k-kinzal/progressived/pkg/progressived/persistence"
 	v1 "github.com/k-kinzal/progressived/pkg/progressived/persistence/v1/deployment"
 	"time"
 )
 
-type DeploymentProviderSpec struct {
+type DeploymentProviderSpecBody struct {
 	ProviderType  string `json:"type"`
 	HostedZoneID  string `json:"hostedZoneId,omitempty"`
 	RecordName    string `json:"recordName,omitempty"`
@@ -14,60 +13,60 @@ type DeploymentProviderSpec struct {
 	SetIdentifier string `json:"setIdentifier,omitempty"`
 }
 
-type DeploymentStepBehaviorSpec struct {
+type DeploymentStepBehaviorSpecBody struct {
 	Algorithm string   `json:"algorithm"`
 	Threshold *float64 `json:"threshold,omitempty"`
 }
 
-type DeploymentRollbackBehaviorSpec struct {
+type DeploymentRollbackBehaviorSpecBody struct {
 	RollbackBehaviorAlgorithm string   `json:"algorithm"`
 	Threshold                 *float64 `json:"threshold,omitempty"`
 }
 
-type DeploymentMetricsTargetSpec struct {
+type DeploymentMetricsTargetSpecBody struct {
 	Percentage float64       `json:"percentage"`
 	TimeWindow time.Duration `json:"timeWindow"`
 }
 
-type DeploymentMetricsSpec struct {
-	MetricType  string                       `json:"name"`
-	Period      time.Duration                `json:"period"`
-	Condition   string                       `json:"condition"`
-	Query       string                       `json:"query,omitempty"`
-	AllowNoData *bool                        `json:"allowNoData,omitempty"`
-	Target      *DeploymentMetricsTargetSpec `json:"target,omitempty"`
+type DeploymentMetricsSpecBody struct {
+	MetricType  string                           `json:"name"`
+	Period      time.Duration                    `json:"period"`
+	Condition   string                           `json:"condition"`
+	Query       string                           `json:"query,omitempty"`
+	AllowNoData *bool                            `json:"allowNoData,omitempty"`
+	Target      *DeploymentMetricsTargetSpecBody `json:"target,omitempty"`
 }
 
-type DeploymentSpec struct {
-	Interval time.Duration                   `json:"interval"`
-	Provider *DeploymentProviderSpec         `json:"provider"`
-	Step     *DeploymentStepBehaviorSpec     `json:"step"`
-	Rollback *DeploymentRollbackBehaviorSpec `json:"rollback"`
-	Metrics  []*DeploymentMetricsSpec        `json:"metrics,omitempty"`
+type DeploymentSpecBody struct {
+	Interval time.Duration                       `json:"interval"`
+	Provider *DeploymentProviderSpecBody         `json:"provider"`
+	Step     *DeploymentStepBehaviorSpecBody     `json:"step"`
+	Rollback *DeploymentRollbackBehaviorSpecBody `json:"rollback"`
+	Metrics  []*DeploymentMetricsSpecBody        `json:"metrics,omitempty"`
 }
 
-type DeploymentScheduleState struct {
+type DeploymentScheduleStateBody struct {
 	Weight            float64   `json:"weight"`
 	NextScheduledTime time.Time `json:"nextScheduledTime"`
 }
 
-type DeploymentRetryState struct {
+type DeploymentRetryStateBody struct {
 	Reason            string    `json:"reason,omitempty"`
 	Count             int       `json:"count"`
 	NextScheduledTime time.Time `json:"nextScheduledTime"`
 }
 
-type DeploymentState struct {
-	Revision  int                      `json:"revision"`
-	Status    string                   `json:"status"`
-	Weight    float64                  `json:"weight"`
-	Schedule  *DeploymentScheduleState `json:"schedule,omitempty"`
-	Retry     *DeploymentRetryState    `json:"retry,omitempty"`
-	CreatedAt time.Time                `json:"createdAt"`
-	UpdatedAt time.Time                `json:"updatedAt"`
+type DeploymentStateBody struct {
+	Revision  int                          `json:"revision"`
+	Status    string                       `json:"status"`
+	Weight    float64                      `json:"weight"`
+	Schedule  *DeploymentScheduleStateBody `json:"schedule,omitempty"`
+	Retry     *DeploymentRetryStateBody    `json:"retry,omitempty"`
+	CreatedAt time.Time                    `json:"createdAt"`
+	UpdatedAt time.Time                    `json:"updatedAt"`
 }
 
-type DeploymentHistory struct {
+type DeploymentHistoryBody struct {
 	Event      string                 `json:"event"`
 	Revision   int                    `json:"revision"`
 	Status     string                 `json:"status"`
@@ -76,187 +75,201 @@ type DeploymentHistory struct {
 	Attributes map[string]interface{} `json:"attributes,omitempty"`
 }
 
-type Deployment struct {
-	Version string               `json:"version"`
-	Name    string               `json:"name"`
-	Spec    *DeploymentSpec      `json:"spec"`
-	State   *DeploymentState     `json:"state"`
-	History []*DeploymentHistory `json:"history"`
+type DeploymentBody struct {
+	Version string                   `json:"version"`
+	Name    string                   `json:"name"`
+	Spec    *DeploymentSpecBody      `json:"spec"`
+	State   *DeploymentStateBody     `json:"state"`
+	History []*DeploymentHistoryBody `json:"history"`
 }
 
-func newDeploymentWithEntityV1(entity *v1.Deployment) *Deployment {
-	var provider *DeploymentProviderSpec
-	switch persistence.ProviderType(entity.Spec.Provider.ProviderType) {
-	case persistence.InMemoryProviderType:
-		provider = &DeploymentProviderSpec{
-			ProviderType: entity.Spec.Provider.ProviderType,
+func newDeploymentBodyWithEntityV1(entity *v1.Deployment) *DeploymentBody {
+	var provider *DeploymentProviderSpecBody
+	switch entity.Provider().Type() {
+	case v1.InMemoryProviderType:
+		provider = &DeploymentProviderSpecBody{
+			ProviderType: v1.InMemoryProviderType.String(),
 		}
-	case persistence.Route53ProviderType:
-		provider = &DeploymentProviderSpec{
-			ProviderType:  entity.Spec.Provider.ProviderType,
-			HostedZoneID:  entity.Spec.Provider.Route53.HostedZoneID,
-			RecordName:    entity.Spec.Provider.Route53.RecordName,
-			RecordType:    entity.Spec.Provider.Route53.RecordName,
-			SetIdentifier: entity.Spec.Provider.Route53.SetIdentifier,
-		}
-	default:
-		panic("")
-	}
-
-	var stepBehavior *DeploymentStepBehaviorSpec
-	switch persistence.BehaviorAlgorithm(entity.Spec.Step.StepBehaviorAlgorithm) {
-	case persistence.IncreaseBehaviorType:
-		stepBehavior = &DeploymentStepBehaviorSpec{
-			Algorithm: entity.Spec.Step.StepBehaviorAlgorithm,
-			Threshold: &entity.Spec.Step.Increase.Threshold,
+	case v1.Route53ProviderType:
+		provider = &DeploymentProviderSpecBody{
+			ProviderType:  v1.Route53ProviderType.String(),
+			HostedZoneID:  entity.Provider().Route53Config().HostedZoneID(),
+			RecordName:    entity.Provider().Route53Config().RecordName(),
+			RecordType:    entity.Provider().Route53Config().RecordName(),
+			SetIdentifier: entity.Provider().Route53Config().SetIdentifier(),
 		}
 	default:
 		panic("")
 	}
 
-	var rollbackBehavior *DeploymentRollbackBehaviorSpec
-	switch persistence.RollbackBehaviorAlgorithm(entity.Spec.Rollback.RollbackBehaviorAlgorithm) {
-	case persistence.RollbackDecreaseBehaviorType:
-		rollbackBehavior = &DeploymentRollbackBehaviorSpec{
-			RollbackBehaviorAlgorithm: entity.Spec.Rollback.RollbackBehaviorAlgorithm,
-			Threshold:                 &entity.Spec.Rollback.Decrease.Threshold,
-		}
-	case persistence.RollbackHistoryBehaviorType:
-		rollbackBehavior = &DeploymentRollbackBehaviorSpec{
-			RollbackBehaviorAlgorithm: entity.Spec.Rollback.RollbackBehaviorAlgorithm,
+	var stepBehavior *DeploymentStepBehaviorSpecBody
+	switch entity.StepBehavior().Algorithm() {
+	case v1.IncreaseBehaviorType:
+		stepBehavior = &DeploymentStepBehaviorSpecBody{
+			Algorithm: v1.IncreaseBehaviorType.String(),
+			Threshold: &entity.StepBehavior().IncreaseSpec().Threshold,
 		}
 	default:
 		panic("")
 	}
 
-	var metrics []*DeploymentMetricsSpec = make([]*DeploymentMetricsSpec, len(entity.Spec.Metrics))
-	for i, met := range entity.Spec.Metrics {
-		switch persistence.MetricsType(met.MetricType) {
-		case persistence.InMemoryMetricsType:
-			metrics[i] = &DeploymentMetricsSpec{
-				MetricType: met.MetricType,
-				Period:     met.Period,
-				Condition:  met.Condition,
-				Target: &DeploymentMetricsTargetSpec{
-					Percentage: met.Target.Percentage,
-					TimeWindow: met.Target.TimeWindow,
-				},
+	var rollbackBehavior *DeploymentRollbackBehaviorSpecBody
+	switch entity.RollbackBehavior().Algorithm() {
+	case v1.RollbackHistoryBehaviorType:
+		rollbackBehavior = &DeploymentRollbackBehaviorSpecBody{
+			RollbackBehaviorAlgorithm: v1.RollbackHistoryBehaviorType.String(),
+		}
+	case v1.RollbackDecreaseBehaviorType:
+		rollbackBehavior = &DeploymentRollbackBehaviorSpecBody{
+			RollbackBehaviorAlgorithm: v1.RollbackDecreaseBehaviorType.String(),
+			Threshold:                 &entity.RollbackBehavior().DecreaseSpec().Threshold,
+		}
+	default:
+		panic("")
+	}
+
+	var metrics = make([]*DeploymentMetricsSpecBody, len(entity.Metrics()))
+	for i, met := range entity.Metrics() {
+		switch met.Type() {
+		case v1.InMemoryMetricsType:
+			metrics[i] = &DeploymentMetricsSpecBody{
+				MetricType: v1.InMemoryMetricsType.String(),
+				Period:     met.Period(),
+				Condition:  met.Condition(),
+				Target:     nil,
 			}
-		case persistence.InCloudWatchMetricsType:
-			metrics[i] = &DeploymentMetricsSpec{
-				MetricType:  met.MetricType,
-				Period:      met.Period,
-				Condition:   met.Condition,
-				Query:       met.Query,
-				AllowNoData: met.AllowNoData,
-				Target: &DeploymentMetricsTargetSpec{
-					Percentage: met.Target.Percentage,
-					TimeWindow: met.Target.TimeWindow,
-				},
+			if target := met.Target(); target != nil {
+				metrics[i].Target = &DeploymentMetricsTargetSpecBody{
+					Percentage: target.Percentage(),
+					TimeWindow: target.TimeWindow(),
+				}
+			}
+		case v1.CloudWatchMetricsType:
+			allowNoData := met.CloudWatchSpec().AllowNoData()
+			metrics[i] = &DeploymentMetricsSpecBody{
+				MetricType:  v1.CloudWatchMetricsType.String(),
+				Period:      met.Period(),
+				Condition:   met.Condition(),
+				Query:       met.CloudWatchSpec().Query(),
+				AllowNoData: &allowNoData,
+				Target:      nil,
+			}
+			if target := met.Target(); target != nil {
+				metrics[i].Target = &DeploymentMetricsTargetSpecBody{
+					Percentage: target.Percentage(),
+					TimeWindow: target.TimeWindow(),
+				}
 			}
 		}
 	}
 
-	spec := &DeploymentSpec{
-		Interval: entity.Spec.Interval,
+	spec := &DeploymentSpecBody{
+		Interval: entity.Interval(),
 		Provider: provider,
 		Step:     stepBehavior,
 		Rollback: rollbackBehavior,
 		Metrics:  metrics,
 	}
 
-	var schedule *DeploymentScheduleState
-	if entity.State.Schedule != nil {
-		schedule = &DeploymentScheduleState{
-			Weight:            entity.State.Schedule.Weight,
-			NextScheduledTime: entity.State.Schedule.NextScheduledTime,
+	var schedule *DeploymentScheduleStateBody
+	if s := entity.State().Schedule(); s != nil {
+		schedule = &DeploymentScheduleStateBody{
+			Weight:            s.Weight(),
+			NextScheduledTime: s.NextScheduledTime(),
 		}
 	}
 
-	var retry *DeploymentRetryState
-	if entity.State.Retry != nil {
-		retry = &DeploymentRetryState{
-			Reason:            entity.State.Retry.Reason,
-			Count:             entity.State.Retry.Count,
-			NextScheduledTime: entity.State.Retry.NextScheduledTime,
+	var retry *DeploymentRetryStateBody
+	if r := entity.State().Retry(); r != nil {
+		retry = &DeploymentRetryStateBody{
+			Reason:            r.Reason(),
+			Count:             int(r.Count()),
+			NextScheduledTime: r.NextScheduledTime(),
 		}
 	}
 
-	state := &DeploymentState{
-		Revision:  entity.State.Revision,
-		Status:    entity.State.Status.String(),
-		Weight:    entity.State.Weight,
+	state := &DeploymentStateBody{
+		Revision:  int(entity.State().Revision()),
+		Status:    entity.State().Status().String(),
+		Weight:    entity.State().Weight(),
 		Schedule:  schedule,
 		Retry:     retry,
-		CreatedAt: entity.State.CreatedAt,
-		UpdatedAt: entity.State.UpdatedAt,
+		CreatedAt: entity.State().CreatedAt(),
+		UpdatedAt: entity.State().UpdatedAt(),
 	}
 
-	var history []*DeploymentHistory = make([]*DeploymentHistory, len(entity.History))
-	for i, hist := range entity.History {
-		history[i] = &DeploymentHistory{
-			Event:      hist.Event.String(),
-			Revision:   hist.Revision,
-			Status:     hist.Status.String(),
-			Weight:     hist.Weight,
-			CreatedAt:  hist.CreatedAt,
-			Attributes: hist.Attributes,
+	var history = make([]*DeploymentHistoryBody, len(entity.History()))
+	for i, hist := range entity.History() {
+		history[i] = &DeploymentHistoryBody{
+			Event:      hist.Event().String(),
+			Revision:   int(hist.Revision()),
+			Status:     hist.Status().String(),
+			Weight:     hist.Weight(),
+			CreatedAt:  hist.CreatedAt(),
+			Attributes: hist.Attributes(),
 		}
 	}
 
-	return &Deployment{
-		Version: entity.Ver.String(),
-		Name:    entity.Name,
+	return &DeploymentBody{
+		Version: entity.Version().String(),
+		Name:    entity.Name(),
 		Spec:    spec,
 		State:   state,
 		History: history,
 	}
 }
 
-func newDeploymentWithEntity(entity persistence.Deployment) *Deployment {
-	switch entity.Version() {
-	case "v1":
-		e, ok := entity.(*v1.Deployment)
-		if !ok {
-			panic("")
-		}
-		return newDeploymentWithEntityV1(e)
-	default:
-		panic("")
-	}
-}
-
 type PutDeploymentResponse struct {
-	Deployment *Deployment `json:"deployment"`
+	Deployment *DeploymentBody `json:"deployment"`
 }
 
-func NewPutDeploymentResponseWith(entity persistence.Deployment) *PutDeploymentResponse {
+func NewPutDeploymentResponse(entity *v1.Deployment) *PutDeploymentResponse {
 	return &PutDeploymentResponse{
-		Deployment: newDeploymentWithEntity(entity),
+		Deployment: newDeploymentBodyWithEntityV1(entity),
 	}
 }
 
 type DescribeDeploymentResponse struct {
-	Deployment *Deployment `json:"deployment"`
+	Deployment *DeploymentBody `json:"deployment"`
 }
 
-func NewDescribeDeploymentResponseWith(entity persistence.Deployment) *DescribeDeploymentResponse {
+func NewDescribeDeploymentResponse(entity *v1.Deployment) *DescribeDeploymentResponse {
 	return &DescribeDeploymentResponse{
-		Deployment: newDeploymentWithEntity(entity),
+		Deployment: newDeploymentBodyWithEntityV1(entity),
 	}
 }
 
 type ListDeploymentResponse struct {
-	Deployments []*Deployment `json:"deployments"`
+	Deployments []*DeploymentBody `json:"deployments"`
 }
 
-func NewListDeploymentResponseWith(entities []persistence.Deployment) *ListDeploymentResponse {
-	var deployments []*Deployment = make([]*Deployment, len(entities))
+func NewListDeploymentResponse(entities []*v1.Deployment) *ListDeploymentResponse {
+	var deployments []*DeploymentBody = make([]*DeploymentBody, len(entities))
 	for i, entity := range entities {
-		deployments[i] = newDeploymentWithEntity(entity)
+		deployments[i] = newDeploymentBodyWithEntityV1(entity)
 	}
 
 	return &ListDeploymentResponse{
 		Deployments: deployments,
+	}
+}
+
+type ScheduleDeploymentResponse struct {
+	Deployment *DeploymentBody `json:"deployment"`
+}
+
+func NewScheduleDeploymentResponse(entity *v1.Deployment) *ScheduleDeploymentResponse {
+	return &ScheduleDeploymentResponse{
+		Deployment: newDeploymentBodyWithEntityV1(entity),
+	}
+}
+
+type PauseDeploymentResponse struct {
+	Deployment *DeploymentBody `json:"deployment"`
+}
+
+func NewPauseDeploymentResponse(entity *v1.Deployment) *PauseDeploymentResponse {
+	return &PauseDeploymentResponse{
+		Deployment: newDeploymentBodyWithEntityV1(entity),
 	}
 }
